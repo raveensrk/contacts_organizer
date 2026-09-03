@@ -1,6 +1,12 @@
 # contacts-organizer
 
+![Swift](https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-000000?logo=apple&logoColor=white)
+![Dependencies](https://img.shields.io/badge/dependencies-none-4c9a2a)
+
 Files unsorted iCloud contacts into lists, from the terminal.
+
+![contacts-organizer in a terminal](docs/screenshot.svg)
 
 Contacts that belong to no group are treated as an inbox: the tool walks them
 one at a time, shows the record, and lists your existing lists. Arrow to the one
@@ -61,6 +67,10 @@ numbered prompt: a number, or text to match, `enter` to skip, `:q` to quit,
 `:?` for help. `CONTACTS_ORGANIZER_SIMPLE=1` forces that mode.
 
 ## Design notes
+
+The screenshot above is generated from the program's real output — the same
+`Render.card` and `InteractivePicker.frame` the tool runs — with invented list
+and contact names. No real address-book data goes into the repository.
 
 - **One list per contact.** The queue is by definition "contacts in no list", so
   each filed contact lands in exactly one, and the prompt accepts a single
