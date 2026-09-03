@@ -22,6 +22,12 @@ let package = Package(
                     "-Xlinker", "Sources/contacts-organizer/Info.plist",
                 ]),
             ]
-        )
+        ),
+        .testTarget(
+            name: "contacts-organizerTests",
+            dependencies: ["contacts-organizer"],
+            path: "Tests/contacts-organizerTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )

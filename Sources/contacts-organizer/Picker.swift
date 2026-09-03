@@ -1,7 +1,7 @@
 import Foundation
 
 /// What the user asked for at the prompt.
-enum Choice {
+enum Choice: Equatable {
     case list(index: Int)
     case create(name: String)
     case skip

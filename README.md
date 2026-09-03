@@ -3,6 +3,7 @@
 ![Swift](https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-000000?logo=apple&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-4c9a2a)
+![Tests](https://img.shields.io/badge/tests-38%20passing-4c9a2a)
 
 Files unsorted iCloud contacts into lists, from the terminal.
 
@@ -65,6 +66,32 @@ contacts-organizer help
 Over a pipe, or on a terminal that cannot do raw mode, it falls back to a
 numbered prompt: a number, or text to match, `enter` to skip, `:q` to quit,
 `:?` for help. `CONTACTS_ORGANIZER_SIMPLE=1` forces that mode.
+
+## Tests
+
+```sh
+swift test
+```
+
+38 tests, no fixtures and no terminal required. The parts that decide
+behaviour are kept as pure value logic so they can be driven directly:
+
+- **`KeyDecoderTests`** — arrow keys in both normal and application cursor
+  mode, escape sequences split across reads, a lone ESC, control keys, and
+  partial UTF-8.
+- **`PickerModelTests`** — filter ranking, highlight wrap-around, and the
+  create-on-no-match path.
+- **`RedrawTests`** — replays the emitted escape sequences through a small
+  terminal simulator to assert that consecutive frames start on the same
+  screen row and that no row is wide enough to wrap. Both of those were real
+  bugs: the frame used to walk up the screen on every keystroke.
+- **`LinePickerTests`** — drives the fallback picker by pointing stdin at a
+  file, including end-of-input.
+- **`QueueBuilderTests`** — the definition of "unfiled", and the ordering
+  fallback when no modification date matches.
+
+Nothing here touches the Contacts store, so the suite runs without the
+Contacts permission and cannot modify an address book.
 
 ## Design notes
 
