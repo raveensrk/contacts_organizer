@@ -2,9 +2,15 @@ import Contacts
 import Foundation
 
 enum Style {
-    /// Honour NO_COLOR, and stay plain when stdout is redirected.
-    static let enabled: Bool = ProcessInfo.processInfo.environment["NO_COLOR"] == nil
-        && isatty(FileHandle.standardOutput.fileDescriptor) == 1
+    /// Honour NO_COLOR, and stay plain when stdout is redirected — unless
+    /// CLICOLOR_FORCE asks for colour anyway, which is what makes piping to
+    /// `less -R` (or a renderer) keep its formatting.
+    static let enabled: Bool = {
+        let environment = ProcessInfo.processInfo.environment
+        if environment["NO_COLOR"] != nil { return false }
+        if let force = environment["CLICOLOR_FORCE"], force != "0" { return true }
+        return isatty(FileHandle.standardOutput.fileDescriptor) == 1
+    }()
 
     static func bold(_ s: String) -> String { enabled ? "\u{1B}[1m\(s)\u{1B}[0m" : s }
     static func dim(_ s: String) -> String { enabled ? "\u{1B}[2m\(s)\u{1B}[0m" : s }

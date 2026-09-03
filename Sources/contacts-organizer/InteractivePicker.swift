@@ -58,11 +58,16 @@ enum InteractivePicker {
 
     // MARK: - Drawing
 
-    /// Terminal size, falling back to a conservative 80x24.
+    /// Terminal size. Falls back to COLUMNS/LINES when there is no tty to ask
+    /// (a pipe, a renderer), then to a conservative 80x24.
     private static var terminalSize: (columns: Int, rows: Int) {
         var size = winsize()
-        guard ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0, size.ws_col > 0 else { return (80, 24) }
-        return (Int(size.ws_col), size.ws_row > 0 ? Int(size.ws_row) : 24)
+        if ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0, size.ws_col > 0 {
+            return (Int(size.ws_col), size.ws_row > 0 ? Int(size.ws_row) : 24)
+        }
+        let environment = ProcessInfo.processInfo.environment
+        return (environment["COLUMNS"].flatMap(Int.init) ?? 80,
+                environment["LINES"].flatMap(Int.init) ?? 24)
     }
 
     /// Clips to a visible width. Every row must fit on one terminal line: a
