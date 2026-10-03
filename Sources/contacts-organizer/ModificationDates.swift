@@ -11,8 +11,14 @@ enum ModificationDates {
 
     /// Contact identifier -> last modification date. Empty if unreadable.
     static func load() -> [String: Date] {
+        load(from: storePaths())
+    }
+
+    /// The same read, against an explicit list of store files. Split out so a
+    /// test can point it at a store whose newest rows are still in the WAL.
+    static func load(from paths: [String]) -> [String: Date] {
         var byID: [String: Date] = [:]
-        for path in storePaths() {
+        for path in paths {
             for (id, date) in read(path: path) {
                 // A contact can appear in more than one store; keep the newest.
                 if let existing = byID[id], existing >= date { continue }
@@ -35,9 +41,12 @@ enum ModificationDates {
     }
 
     private static func read(path: String) -> [String: Date] {
-        // immutable=1 promises sqlite we will not write and no one else is mid-write,
-        // which lets it open the file without touching the -wal/-shm sidecars.
-        let uri = "file:\(path)?mode=ro&immutable=1"
+        // Read-only, but deliberately not immutable=1: that flag makes sqlite
+        // ignore the -wal file, so every row Contacts.app has not checkpointed
+        // yet is invisible. Measured here, one store held 696 rows and the
+        // immutable read saw 693 - the three newest cards, which are exactly
+        // the ones triage is supposed to show first.
+        let uri = "file:\(path)?mode=ro"
         var db: OpaquePointer?
         guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK else {
             sqlite3_close(db)

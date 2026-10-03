@@ -74,10 +74,10 @@ final class Triage {
     // MARK: - Actions
 
     private func file(_ contact: CNContact, into group: CNGroup) throws {
-        try repo.addMember(contact, to: group)
+        let byContactsApp = try repo.addMember(contact, to: group)
         lastAssignment = (contact, group)
         filed += 1
-        print(Style.green("  → \(group.name)"))
+        print(Style.green("  → \(group.name)") + contactsAppNote(byContactsApp))
         position += 1
     }
 
@@ -90,10 +90,10 @@ final class Triage {
         let group = try repo.createGroup(named: listName)
         groups = try repo.groups()
         created.append(listName)
-        try repo.addMember(contact, to: group)
+        let byContactsApp = try repo.addMember(contact, to: group)
         lastAssignment = (contact, group)
         filed += 1
-        print(Style.green("  → \(group.name) (new list)"))
+        print(Style.green("  → \(group.name) (new list)") + contactsAppNote(byContactsApp))
         position += 1
     }
 
@@ -102,12 +102,13 @@ final class Triage {
             print(Style.dim("  nothing to undo"))
             return
         }
-        try repo.removeMember(last.contact, from: last.group)
+        let byContactsApp = try repo.removeMember(last.contact, from: last.group)
         lastAssignment = nil
         filed -= 1
         // Re-queue it as the very next contact, wherever we happen to be now.
         queue.insert(last.contact, at: position)
-        print(Style.yellow("  undid \(Render.displayName(last.contact)) → \(last.group.name)"))
+        print(Style.yellow("  undid \(Render.displayName(last.contact)) → \(last.group.name)")
+            + contactsAppNote(byContactsApp))
     }
 
     private func deleteCurrent(_ contact: CNContact) throws {
@@ -117,11 +118,17 @@ final class Triage {
             print(Style.dim("  cancelled"))
             return
         }
-        try repo.delete(contact)
+        let byContactsApp = try repo.delete(contact)
         deleted += 1
         if lastAssignment?.contact.identifier == contact.identifier { lastAssignment = nil }
-        print(Style.red("  deleted"))
+        print(Style.red("  deleted") + contactsAppNote(byContactsApp))
         position += 1
+    }
+
+    /// Says so when Contacts.app had to make the write, so a note-bearing card
+    /// does not look like a bug. Silent for the ordinary native write.
+    private func contactsAppNote(_ byContactsApp: Bool) -> String {
+        byContactsApp ? Style.dim("  (via Contacts.app: this card has a note)") : ""
     }
 
     // MARK: - Lists

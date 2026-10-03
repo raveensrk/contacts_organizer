@@ -3,7 +3,7 @@
 ![Swift](https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-000000?logo=apple&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-4c9a2a)
-![Tests](https://img.shields.io/badge/tests-38%20passing-4c9a2a)
+![Tests](https://img.shields.io/badge/tests-47%20passing-4c9a2a)
 
 Files unsorted iCloud contacts into lists, from the terminal.
 
@@ -35,6 +35,20 @@ macOS grants Contacts access to the **terminal app**, not to this binary. The
 first run prompts; approve it. If it was denied before, no prompt appears —
 switch the terminal on under System Settings → Privacy & Security → Contacts,
 or run `tccutil reset AddressBook` to clear the old decision.
+
+A card that carries a **note** cannot be saved by this process at all: since
+macOS 13 the note field sits behind an Apple-granted entitlement, and the store
+refuses the write with `Cocoa error 134092` while faulting the field it may not
+read. On those cards the tool asks Contacts.app to make the change instead, and
+says so in the output:
+
+```
+  → Bike and Vehicles  (via Contacts.app: this card has a note)
+```
+
+That hand-off runs `osascript`, so the terminal also needs Automation
+permission: System Settings → Privacy & Security → Automation, with Contacts
+switched on under the terminal. Nothing else in the tool uses Contacts.app.
 
 ## Usage
 
@@ -73,7 +87,7 @@ numbered prompt: a number, or text to match, `enter` to skip, `:q` to quit,
 swift test
 ```
 
-38 tests, no fixtures and no terminal required. The parts that decide
+47 tests, no fixtures and no terminal required. The parts that decide
 behaviour are kept as pure value logic so they can be driven directly:
 
 - **`KeyDecoderTests`** — arrow keys in both normal and application cursor
@@ -89,9 +103,16 @@ behaviour are kept as pure value logic so they can be driven directly:
   file, including end-of-input.
 - **`QueueBuilderTests`** — the definition of "unfiled", and the ordering
   fallback when no modification date matches.
+- **`ContactsFallbackTests`** — recognises the note fault at the top level and
+  behind a wrapping error, and proves a contact identifier cannot break out of
+  the AppleScript string literal it is embedded in.
+- **`ModificationDateTests`** — reads a throwaway sqlite store whose newest row
+  is still in the `-wal` file, which is where Contacts.app keeps the cards it
+  has not checkpointed yet.
 
-Nothing here touches the Contacts store, so the suite runs without the
-Contacts permission and cannot modify an address book.
+Nothing here touches the live Contacts store, so the suite runs without the
+Contacts permission and cannot modify an address book. The one test that needs
+a database builds its own store in a temporary directory.
 
 ## Design notes
 
@@ -124,6 +145,12 @@ and contact names. No real address-book data goes into the repository.
 - **Ordering** is most-recently-modified first. `CNContact` has no public
   modification date, so the dates are read (read-only) from the AddressBook
   Core Data stores. That schema is undocumented; if it stops matching, the tool
-  says so and falls back to alphabetical.
-- **Notes are not shown.** `CNContactNoteKey` has needed an Apple-granted
-  entitlement since macOS 11, and asking for it makes the fetch throw.
+  says so and falls back to alphabetical. The read covers the `-wal` file as
+  well as the database: sqlite skips it under `immutable=1`, and the rows it
+  holds are exactly the newest cards.
+- **Notes are not shown, and cannot be written natively.** `CNContactNoteKey`
+  has needed an Apple-granted entitlement since macOS 11, so asking for it
+  makes the fetch throw, and saving a card that has one fails with
+  `Cocoa error 134092` while the store faults the field it may not read. Those
+  writes go to Contacts.app through `osascript` instead, and the output marks
+  them `via Contacts.app`.

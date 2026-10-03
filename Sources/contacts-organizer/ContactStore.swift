@@ -197,16 +197,34 @@ final class ContactsRepo {
 
     // MARK: - Writes
 
-    func addMember(_ contact: CNContact, to group: CNGroup) throws {
-        let request = CNSaveRequest()
-        request.addMember(contact, to: group)
-        try store.execute(request)
+    /// Every write returns true when Contacts.app had to make the change
+    /// instead of this process, which happens on a card that carries a note.
+    /// See `ContactsFallback` for why macOS refuses those writes natively.
+
+    @discardableResult
+    func addMember(_ contact: CNContact, to group: CNGroup) throws -> Bool {
+        do {
+            let request = CNSaveRequest()
+            request.addMember(contact, to: group)
+            try store.execute(request)
+            return false
+        } catch let error as NSError where ContactsFallback.isNoteFault(error) {
+            try ContactsFallback.addMember(contactID: contact.identifier, groupID: group.identifier)
+            return true
+        }
     }
 
-    func removeMember(_ contact: CNContact, from group: CNGroup) throws {
-        let request = CNSaveRequest()
-        request.removeMember(contact, from: group)
-        try store.execute(request)
+    @discardableResult
+    func removeMember(_ contact: CNContact, from group: CNGroup) throws -> Bool {
+        do {
+            let request = CNSaveRequest()
+            request.removeMember(contact, from: group)
+            try store.execute(request)
+            return false
+        } catch let error as NSError where ContactsFallback.isNoteFault(error) {
+            try ContactsFallback.removeMember(contactID: contact.identifier, groupID: group.identifier)
+            return true
+        }
     }
 
     func createGroup(named name: String) throws -> CNGroup {
@@ -224,12 +242,19 @@ final class ContactsRepo {
         return saved
     }
 
-    func delete(_ contact: CNContact) throws {
+    @discardableResult
+    func delete(_ contact: CNContact) throws -> Bool {
         guard let mutable = contact.mutableCopy() as? CNMutableContact else {
             throw AppError("Could not prepare \(contact.identifier) for deletion.")
         }
-        let request = CNSaveRequest()
-        request.delete(mutable)
-        try store.execute(request)
+        do {
+            let request = CNSaveRequest()
+            request.delete(mutable)
+            try store.execute(request)
+            return false
+        } catch let error as NSError where ContactsFallback.isNoteFault(error) {
+            try ContactsFallback.delete(contactID: contact.identifier)
+            return true
+        }
     }
 }
