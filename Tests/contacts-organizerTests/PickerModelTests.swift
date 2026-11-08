@@ -68,4 +68,10 @@ final class PickerModelTests: XCTestCase {
             XCTAssertEqual(m.apply(event), expected)
         }
     }
+
+    func testEnterOnNoMatchDoesNothingWhenCreationIsOff() {
+        var m = PickerModel(options: ["Wishlist", "No Wishlist"], allowCreate: false)
+        XCTAssertNil(send("zzz".map { .char($0) } + [.enter], to: &m))
+        XCTAssertEqual(send([.backspace, .backspace, .backspace, .down, .enter], to: &m), .list(index: 1))
+    }
 }

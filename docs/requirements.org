@@ -44,6 +44,7 @@ Sending the wishes is out of scope. This feature only builds the list.
   | ctrl-s | Skip; asked again next run                    |
   | ctrl-u | Undo the last choice and re-show that contact |
   | ctrl-o | Open the contact in Contacts.app              |
+  | ctrl-d | Delete the contact, confirmed separately      |
   | ctrl-q | Quit                                          |
 - The numbered line picker fallback works too, for pipes and dumb terminals.
 
@@ -83,8 +84,9 @@ Each card shows, besides what triage shows today:
   to.
 - Many chats sit under =@lid= JIDs. Those the LID map cannot resolve fall to
   the "no chat" part of the order.
-- The store opened only with =mode=ro&immutable=1=, which skips the =-wal=
-  file. Rows written by a running =wacli sync --follow= may be missed.
+- The store is opened =mode=ro=, which sees the =-wal= file. Only if that
+  fails does it fall back to =mode=ro&immutable=1=, which skips the WAL, and
+  the walk prints a warning saying so.
 
 ** Tests
 - Phone normalisation and matching, including =+91= default and =@lid=.

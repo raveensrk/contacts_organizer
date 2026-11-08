@@ -27,11 +27,11 @@ enum InteractivePicker {
     /// Raw mode needs a real terminal on both ends.
     static var isAvailable: Bool { isatty(STDIN_FILENO) == 1 && isatty(STDOUT_FILENO) == 1 }
 
-    static func prompt(options: [String]) -> Choice {
-        guard enterRawMode() else { return LinePicker.prompt(options: options) }
+    static func prompt(options: [String], allowCreate: Bool = true) -> Choice {
+        guard enterRawMode() else { return LinePicker.prompt(options: options, allowCreate: allowCreate) }
         defer { restoreTerminal() }
 
-        var model = PickerModel(options: options)
+        var model = PickerModel(options: options, allowCreate: allowCreate)
         var leftover: [UInt8] = []
         var linesDrawn = 0
 
@@ -99,7 +99,10 @@ enum InteractivePicker {
         if model.options.isEmpty {
             rows.append(Style.dim(clip("  no lists yet — type a name to create the first one", to: width)))
         } else if model.filtered.isEmpty {
-            rows.append(Style.yellow(clip("  no match — enter creates \"\(model.query)\"", to: width)))
+            let message = model.allowCreate
+                ? "  no match — enter creates \"\(model.query)\""
+                : "  no match — backspace to widen"
+            rows.append(Style.yellow(clip(message, to: width)))
         } else {
             // Leave room for the card above, the prompt, the hint and the shell.
             let budget = max(3, min(maxRows, screenRows - 8))
@@ -127,6 +130,11 @@ enum InteractivePicker {
             : "  ↑↓ move · enter file · ctrl-s skip · ctrl-u undo · ctrl-o open · ctrl-d delete · ctrl-q quit"
         rows.append(Style.dim(clip(hint, to: width)))
 
+        return emit(rows, clearing: previous)
+    }
+
+    /// Wraps finished rows in the cursor moves that redraw them in place.
+    private static func emit(_ rows: [String], clearing previous: Int) -> (text: String, rows: Int) {
         // One frame, one write. Each row erases only its own tail as it is
         // rewritten, so no blanked region is ever visible; the trailing ED(0)
         // removes leftovers when the previous frame was taller.
@@ -167,5 +175,79 @@ enum InteractivePicker {
         guard tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == 0 else { return false }
         terminalIsRaw = true
         return true
+    }
+}
+
+// MARK: - Checkbox picker
+
+extension InteractivePicker {
+
+    /// Ticks and unticks options; nil means cancelled.
+    static func checkboxes(options: [String], checked: Set<Int>) -> Set<Int>? {
+        guard enterRawMode() else { return LineCheckboxes.prompt(options: options, checked: checked) }
+        defer { restoreTerminal() }
+
+        var model = CheckboxModel(options: options, checked: checked)
+        var leftover: [UInt8] = []
+        var linesDrawn = 0
+        print("\u{1B}[?25l", terminator: "")
+
+        while true {
+            let rendered = checkboxFrame(model, clearing: linesDrawn)
+            fputs(rendered.text, stdout)
+            fflush(stdout)
+            linesDrawn = rendered.rows
+
+            var buffer = [UInt8](repeating: 0, count: 1024)
+            let count = read(STDIN_FILENO, &buffer, 1024)
+            guard count > 0 else { erase(linesDrawn); return nil }
+
+            let (events, pending) = KeyDecoder.decode(leftover + Array(buffer[0..<count]))
+            leftover = pending
+            for event in events {
+                switch model.apply(event) {
+                case .save(let result): erase(linesDrawn); return result
+                case .cancel: erase(linesDrawn); return nil
+                case nil: continue
+                }
+            }
+        }
+    }
+
+    static func checkboxFrame(_ model: CheckboxModel, clearing previous: Int) -> (text: String, rows: Int) {
+        let (columns, screenRows) = terminalSize
+        let width = columns - 1
+        var rows: [String] = []
+
+        rows.append(Style.bold("ignore > ") + clip(model.query, to: max(0, width - 9)))
+
+        if model.options.isEmpty {
+            rows.append(Style.dim(clip("  no lists to ignore", to: width)))
+        } else if model.filtered.isEmpty {
+            rows.append(Style.yellow(clip("  no match — backspace to widen", to: width)))
+        } else {
+            let budget = max(3, min(16, screenRows - 6))
+            let visible = min(budget, model.filtered.count)
+            let top = model.filtered.count > visible
+                ? max(0, min(model.highlight - visible / 2, model.filtered.count - visible))
+                : 0
+            for row in top..<(top + visible) {
+                let index = model.filtered[row]
+                let box = model.checked.contains(index) ? "[x] " : "[ ] "
+                if row == model.highlight {
+                    let text = clip("▸ " + box + model.options[index], to: width)
+                    rows.append(Style.selected(text.padding(toLength: max(text.count, width), withPad: " ", startingAt: 0)))
+                } else {
+                    rows.append(clip("  " + box + model.options[index], to: width))
+                }
+            }
+            if model.filtered.count > visible {
+                rows.append(Style.dim(clip("  … \(model.filtered.count - visible) more", to: width)))
+            }
+        }
+
+        let hint = "  ↑↓ move · space tick · type to filter · enter save · esc cancel"
+        rows.append(Style.dim(clip("\(model.checked.count) ticked" + hint, to: width)))
+        return emit(rows, clearing: previous)
     }
 }

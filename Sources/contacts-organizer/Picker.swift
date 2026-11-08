@@ -13,13 +13,23 @@ enum Choice: Equatable {
 
 /// Chooses between the arrow-key picker and the line-based one.
 enum Picker {
-    static func prompt(options: [String]) -> Choice {
+    /// `allowCreate: false` keeps the choice to the given options: text that
+    /// matches none of them re-prompts instead of offering a new list.
+    static func prompt(options: [String], allowCreate: Bool = true) -> Choice {
         // The line picker is the safe path: it needs no terminal at all, so it
         // covers piped input, dumb terminals, and anyone who wants out of raw mode.
         let forceSimple = ProcessInfo.processInfo.environment["CONTACTS_ORGANIZER_SIMPLE"] != nil
         return !forceSimple && InteractivePicker.isAvailable
-            ? InteractivePicker.prompt(options: options)
-            : LinePicker.prompt(options: options)
+            ? InteractivePicker.prompt(options: options, allowCreate: allowCreate)
+            : LinePicker.prompt(options: options, allowCreate: allowCreate)
+    }
+
+    /// Ticks options on and off. Returns the ticked set, or nil if cancelled.
+    static func checkboxes(options: [String], checked: Set<Int>) -> Set<Int>? {
+        let forceSimple = ProcessInfo.processInfo.environment["CONTACTS_ORGANIZER_SIMPLE"] != nil
+        return !forceSimple && InteractivePicker.isAvailable
+            ? InteractivePicker.checkboxes(options: options, checked: checked)
+            : LineCheckboxes.prompt(options: options, checked: checked)
     }
 }
 
@@ -31,7 +41,7 @@ enum LinePicker {
 
     /// Prints the lists and reads one instruction, re-prompting until the
     /// input makes sense. Only valid choices are returned.
-    static func prompt(options: [String]) -> Choice {
+    static func prompt(options: [String], allowCreate: Bool = true) -> Choice {
         printOptions(options)
 
         while true {
@@ -58,7 +68,7 @@ enum LinePicker {
                     // ":new Name" forces a new list whose name would otherwise
                     // read as a number or a command.
                     let parts = input.dropFirst().split(separator: " ", maxSplits: 1)
-                    if let head = parts.first, head.lowercased() == "new", parts.count == 2 {
+                    if allowCreate, let head = parts.first, head.lowercased() == "new", parts.count == 2 {
                         return .create(name: String(parts[1]).trimmingCharacters(in: .whitespaces))
                     }
                     print(Style.yellow("  unknown command \(input) — :? for help"))
@@ -78,6 +88,10 @@ enum LinePicker {
             case .one(let index):
                 return .list(index: index)
             case .none:
+                guard allowCreate else {
+                    print(Style.yellow("  no match for \"\(input)\" — pick 1–\(options.count)"))
+                    continue
+                }
                 return .create(name: input)
             case .many(let indexes):
                 print(Style.yellow("  \(indexes.count) lists match \"\(input)\":"))
@@ -176,5 +190,48 @@ enum Prompt {
         fflush(stdout)
         guard let answer = readLine(strippingNewline: true) else { return false }
         return answer.trimmingCharacters(in: .whitespaces).lowercased() == "y"
+    }
+}
+
+/// The ignore picker without raw mode: numbers toggle, enter saves.
+enum LineCheckboxes {
+    static func prompt(options: [String], checked start: Set<Int>) -> Set<Int>? {
+        var checked = start
+        printOptions(options, checked: checked)
+        while true {
+            print(Style.bold("ignore > "), terminator: "")
+            fflush(stdout)
+            guard let raw = readLine(strippingNewline: true) else {
+                print("")
+                return nil            // stdin closed: nothing is saved
+            }
+            let input = raw.trimmingCharacters(in: .whitespaces)
+            if input.isEmpty { return checked }
+            switch input.lowercased() {
+            case ":q", ":quit": return nil
+            case ":l", ":list": printOptions(options, checked: checked); continue
+            case ":?", ":h", ":help":
+                print(Style.dim("  numbers toggle (e.g. 2 5) · enter saves · :l list · :q cancel"))
+                continue
+            default: break
+            }
+            let numbers = input.split(whereSeparator: { $0 == " " || $0 == "," }).map { Int($0) }
+            guard !numbers.isEmpty, numbers.allSatisfy({ $0.map { (1...options.count).contains($0) } ?? false }) else {
+                print(Style.yellow("  type numbers 1–\(options.count) to toggle, enter to save, :q to cancel"))
+                continue
+            }
+            for number in numbers.compactMap({ $0 }) {
+                let index = number - 1
+                if checked.contains(index) { checked.remove(index) } else { checked.insert(index) }
+            }
+            printOptions(options, checked: checked)
+        }
+    }
+
+    private static func printOptions(_ options: [String], checked: Set<Int>) {
+        for (index, option) in options.enumerated() {
+            let box = checked.contains(index) ? "[x]" : "[ ]"
+            print("  " + Style.dim("\(index + 1).".padding(toLength: 4, withPad: " ", startingAt: 0)) + box + " " + option)
+        }
     }
 }

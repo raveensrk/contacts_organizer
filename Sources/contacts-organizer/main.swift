@@ -9,11 +9,23 @@ USAGE
 
 COMMANDS
   triage    Walk contacts that are in no list, filing each one (default)
+  wishlist  Walk undecided contacts, filing each into Wishlist or No Wishlist
   stats     Counts for the iCloud account: total, filed, unfiled, per list
   lists     Print the lists in the iCloud account
   audit     Report contacts that are in more than one list
   doctor    Diagnose permissions, account detection and date matching
   help      This message
+
+WISHLIST
+  wishlist           ask about every contact in neither Wishlist nor No Wishlist,
+                     latest WhatsApp chat first (read from wacli's ~/.wacli store)
+  wishlist --review  walk contacts already in either group, to change a choice
+  wishlist --export  print everyone in Wishlist as CSV: name, phone, whatsapp
+  wishlist ignore    tick the lists whose contacts the walk never asks about;
+                     saved to ~/.config/contacts-organizer/config.toml
+
+  Both groups are created on first use. Triage, stats and audit do not count
+  them as lists, so a contact can be in Family and in Wishlist.
 
 TRIAGE KEYS
   up/down     move the highlight (ctrl-p / ctrl-n also work)
@@ -58,13 +70,14 @@ func main() throws {
     case "stats": try runStats(repo)
     case "lists": try runLists(repo)
     case "audit": try runAudit(repo)
+    case "wishlist": try runWishlist(repo, arguments: Array(arguments.dropFirst()))
     default:
         throw AppError("Unknown command \"\(command)\".\n\n\(usage)")
     }
 }
 
 func runTriage(_ repo: ContactsRepo) throws {
-    let groups = try repo.groups()
+    let groups = WishlistGroups.lists(try repo.groups())
     let contacts = try repo.contacts()
     let membership = try repo.membershipIndex(groups: groups)
     let unfiled = QueueBuilder.unfiled(contacts: contacts, membership: membership)
@@ -84,7 +97,8 @@ func runTriage(_ repo: ContactsRepo) throws {
 }
 
 func runStats(_ repo: ContactsRepo) throws {
-    let groups = try repo.groups()
+    let allGroups = try repo.groups()
+    let groups = WishlistGroups.lists(allGroups)
     let contacts = try repo.contacts()
     let membership = try repo.membershipIndex(groups: groups)
     let unfiled = QueueBuilder.unfiled(contacts: contacts, membership: membership)
@@ -107,6 +121,8 @@ func runStats(_ repo: ContactsRepo) throws {
                 + Style.dim("  \(count)"))
         }
     }
+
+    try printWishlistStats(repo, allGroups: allGroups, contacts: contacts, listMembership: membership)
 
     // Ordering is best-effort; say which one triage would actually use.
     print("")
@@ -131,7 +147,9 @@ func runLists(_ repo: ContactsRepo) throws {
 }
 
 func runAudit(_ repo: ContactsRepo) throws {
-    let groups = try repo.groups()
+    // Wishlist and No Wishlist are a decision, not a list: being in one of
+    // them and in Family is expected, not drift.
+    let groups = WishlistGroups.lists(try repo.groups())
     let membership = try repo.membershipIndex(groups: groups)
     let contactsByID = Dictionary(uniqueKeysWithValues: try repo.contacts().map { ($0.identifier, $0) })
 

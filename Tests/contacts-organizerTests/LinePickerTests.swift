@@ -8,7 +8,7 @@ final class LinePickerTests: XCTestCase {
 
     /// Feeds `input` to LinePicker.prompt, collecting one choice per call.
     /// Its own output is muted so the test log stays readable.
-    private func choices(_ input: String, calls: Int = 1) -> [Choice] {
+    private func choices(_ input: String, calls: Int = 1, allowCreate: Bool = true) -> [Choice] {
         let path = NSTemporaryDirectory() + UUID().uuidString
         try? input.write(toFile: path, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(atPath: path) }
@@ -19,7 +19,7 @@ final class LinePickerTests: XCTestCase {
         freopen(path, "r", stdin)
 
         var results: [Choice] = []
-        for _ in 0..<calls { results.append(LinePicker.prompt(options: options)) }
+        for _ in 0..<calls { results.append(LinePicker.prompt(options: options, allowCreate: allowCreate)) }
 
         fflush(stdout)
         dup2(savedOut, STDOUT_FILENO)
@@ -72,5 +72,12 @@ final class LinePickerTests: XCTestCase {
     /// Closed stdin must end the session instead of spinning forever.
     func testEndOfInputQuits() {
         XCTAssertEqual(choices(""), [.quit])
+    }
+
+    /// The wishlist picker has fixed choices: unmatched text re-prompts, and
+    /// `:new` is not a way around that.
+    func testNoCreateWhenCreationIsOff() {
+        XCTAssertEqual(choices("zzz\n2\n", allowCreate: false), [.list(index: 1)])
+        XCTAssertEqual(choices(":new Fresh\n:q\n", allowCreate: false), [.quit])
     }
 }

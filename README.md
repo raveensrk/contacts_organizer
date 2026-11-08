@@ -3,7 +3,7 @@
 ![Swift](https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-000000?logo=apple&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-4c9a2a)
-![Tests](https://img.shields.io/badge/tests-47%20passing-4c9a2a)
+![Tests](https://img.shields.io/badge/tests-92%20passing-4c9a2a)
 
 Files unsorted iCloud contacts into lists, from the terminal.
 
@@ -54,12 +54,51 @@ switched on under the terminal. Nothing else in the tool uses Contacts.app.
 
 ```
 contacts-organizer            # triage (default)
+contacts-organizer wishlist   # decide who gets Diwali wishes, one contact at a time
 contacts-organizer stats      # total / filed / unfiled, and per-list counts
 contacts-organizer lists      # the lists in your iCloud account
 contacts-organizer audit      # contacts that ended up in more than one list
 contacts-organizer doctor     # diagnose permissions, account and date matching
 contacts-organizer help
 ```
+
+### Wishlist
+
+`contacts-organizer wishlist` walks every iCloud contact that is in neither
+**Wishlist** nor **No Wishlist** and files it into one of them. Both are
+ordinary iCloud groups, created on first use, so a decision survives reinstalls
+and shows on the phone. A later run asks only about contacts not yet decided.
+
+```
+contacts-organizer wishlist           # the undecided contacts
+contacts-organizer wishlist --review  # contacts already decided, to change a choice
+contacts-organizer wishlist --export  # Wishlist as CSV: name,phone,whatsapp
+contacts-organizer wishlist ignore    # tick lists whose contacts are never asked about
+```
+
+The picker is the triage picker with two fixed choices; typing filters them
+and never creates a list. `ctrl-s` skips, `ctrl-u` undoes, `ctrl-o` opens the
+card, `ctrl-d` deletes, `ctrl-q` quits.
+
+Contacts you chatted with most recently on WhatsApp come first, then the rest
+by name. The card also shows the last chat, the lists the contact is in, their
+WhatsApp name when it differs, and whether you messaged them within three days
+of Diwali 2025. All of that is read, read-only, from the local store of
+[wacli](https://github.com/openclaw/wacli) (`~/.wacli`, or `WACLI_STORE_DIR`).
+Without wacli the walk says so once and uses the triage order. Numbers saved
+without a country code are taken as India (`+91`).
+
+`wishlist ignore` opens a checkbox list of your lists (arrows move, `space`
+ticks, type to filter, `enter` saves, `esc` cancels). A contact in any ticked
+list is hidden from the walk, even if it is also in a list you did not tick;
+nothing is written to iCloud, so un-ticking brings it back. The choice is saved
+to `~/.config/contacts-organizer/config.toml` (or under `XDG_CONFIG_HOME`) as
+group identifiers, so renaming a list keeps it ignored. Review and export are
+not affected.
+
+Triage, `stats` and `audit` do not count Wishlist and No Wishlist as lists: a
+contact can be in Family and in Wishlist, and still appear in triage if those
+two are its only groups. `stats` adds a wishlist section.
 
 `--container <id>` picks a specific account if you have several CardDAV ones;
 `stats` prints the identifiers.
@@ -87,7 +126,7 @@ numbered prompt: a number, or text to match, `enter` to skip, `:q` to quit,
 swift test
 ```
 
-47 tests, no fixtures and no terminal required. The parts that decide
+92 tests, no fixtures and no terminal required. The parts that decide
 behaviour are kept as pure value logic so they can be driven directly:
 
 - **`KeyDecoderTests`** — arrow keys in both normal and application cursor
@@ -109,6 +148,17 @@ behaviour are kept as pure value logic so they can be driven directly:
 - **`ModificationDateTests`** — reads a throwaway sqlite store whose newest row
   is still in the `-wal` file, which is where Contacts.app keeps the cards it
   has not checkpointed yet.
+- **`PhoneNumberTests`** — the `+91` default, trunk zeros, `00` prefixes and
+  JID device suffixes, which decide whether an iCloud card meets its chat.
+- **`WhatsAppStoreTests`** — a throwaway wacli store: phone and `@lid` chats,
+  the newest message beating a stale chat row, a received message not counting
+  as a Diwali wish, and a chat still in the `-wal` file.
+- **`IgnoreConfigTests`** — the hand-editable shapes of `wishlist.ignore`,
+  comments and `#` inside strings, malformed values, and a write that reads
+  back.
+- **`WishlistTests`** — undecided and ignored contacts (any ignored list
+  hides), chat-recency order and its fallback, review order, the card lines,
+  CSV export, the checkbox picker and its frame width.
 
 Nothing here touches the live Contacts store, so the suite runs without the
 Contacts permission and cannot modify an address book. The one test that needs
@@ -140,8 +190,11 @@ and contact names. No real address-book data goes into the repository.
 - **The terminal is always put back.** Raw mode is restored via `defer`, an
   `atexit` hook, and handlers for SIGTERM/SIGHUP/SIGQUIT, so a killed process
   cannot leave the shell without an echo or a cursor.
-- **No state file.** Skipped contacts come back next run, by design. The only
-  state is what is in iCloud.
+- **One state file, and only for the ignore list.** Skipped contacts come
+  back next run, by design, and every decision is an iCloud group. The ignore
+  list is a preference, not a decision, so it lives in
+  `~/.config/contacts-organizer/config.toml`. Its parser reads that one key, so
+  the build stays dependency-free.
 - **Ordering** is most-recently-modified first. `CNContact` has no public
   modification date, so the dates are read (read-only) from the AddressBook
   Core Data stores. That schema is undocumented; if it stops matching, the tool

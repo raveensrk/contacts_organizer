@@ -82,6 +82,10 @@ final class Triage {
     }
 
     private func createAndFile(_ contact: CNContact, listName: String) throws {
+        guard !WishlistGroups.isReserved(name: listName) else {
+            print(Style.yellow("  \"\(listName)\" is kept for `contacts-organizer wishlist`; pick another name"))
+            return
+        }
         // Confirm, so a typo cannot quietly create a junk list that syncs to the phone.
         guard Prompt.confirm("  Create new list \(Style.bold("\"\(listName)\""))?") else {
             print(Style.dim("  cancelled"))

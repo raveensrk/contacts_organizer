@@ -85,12 +85,15 @@ enum KeyDecoder {
 /// highlight sits. Pure value logic, so every transition is testable.
 struct PickerModel {
     let options: [String]
+    /// When false, enter on no match does nothing instead of offering a new list.
+    let allowCreate: Bool
     private(set) var query = ""
     private(set) var highlight = 0
     private(set) var filtered: [Int] = []
 
-    init(options: [String]) {
+    init(options: [String], allowCreate: Bool = true) {
         self.options = options
+        self.allowCreate = allowCreate
         refilter()
     }
 
@@ -109,7 +112,7 @@ struct PickerModel {
         case .enter:
             if !filtered.isEmpty { return .list(index: filtered[highlight]) }
             let name = query.trimmingCharacters(in: .whitespaces)
-            return name.isEmpty ? nil : .create(name: name)
+            return name.isEmpty || !allowCreate ? nil : .create(name: name)
         case .skip: return .skip
         case .undo: return .undo
         case .open: return .open
@@ -122,12 +125,15 @@ struct PickerModel {
     /// Case-insensitive substring filter, ranked exact → prefix → contains so
     /// typing "work" puts Work above Workshop.
     private mutating func refilter() {
+        filtered = Self.rank(query, in: options)
+        highlight = 0
+    }
+
+    /// Indexes of the options matching `query`, exact first, then prefix,
+    /// then substring. An empty query keeps every option in order.
+    static func rank(_ query: String, in options: [String]) -> [Int] {
         let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !needle.isEmpty else {
-            filtered = Array(options.indices)
-            highlight = 0
-            return
-        }
+        guard !needle.isEmpty else { return Array(options.indices) }
         var exact: [Int] = [], prefix: [Int] = [], contains: [Int] = []
         for index in options.indices {
             let name = options[index].lowercased()
@@ -135,7 +141,58 @@ struct PickerModel {
             else if name.hasPrefix(needle) { prefix.append(index) }
             else if name.contains(needle) { contains.append(index) }
         }
-        filtered = exact + prefix + contains
+        return exact + prefix + contains
+    }
+}
+
+/// The ignore picker's state: which options are ticked, plus the same
+/// filter and highlight as `PickerModel`. Space ticks, so a query cannot
+/// hold a space; typing a word of the name is enough to find it.
+struct CheckboxModel {
+    enum Outcome: Equatable {
+        case save(Set<Int>)
+        case cancel
+    }
+
+    let options: [String]
+    private(set) var checked: Set<Int>
+    private(set) var query = ""
+    private(set) var highlight = 0
+    private(set) var filtered: [Int] = []
+
+    init(options: [String], checked: Set<Int>) {
+        self.options = options
+        self.checked = checked.filter { options.indices.contains($0) }
+        filtered = Array(options.indices)
+    }
+
+    mutating func apply(_ event: KeyEvent) -> Outcome? {
+        switch event {
+        case .up:
+            if !filtered.isEmpty { highlight = highlight == 0 ? filtered.count - 1 : highlight - 1 }
+        case .down:
+            if !filtered.isEmpty { highlight = (highlight + 1) % filtered.count }
+        case .char(" "):
+            if !filtered.isEmpty {
+                let index = filtered[highlight]
+                if checked.contains(index) { checked.remove(index) } else { checked.insert(index) }
+            }
+        case .char(let character):
+            query.append(character); refilter()
+        case .backspace:
+            if !query.isEmpty { query.removeLast(); refilter() }
+        case .enter:
+            return .save(checked)
+        case .escape, .quit:
+            return .cancel
+        case .skip, .undo, .open, .delete:
+            break
+        }
+        return nil
+    }
+
+    private mutating func refilter() {
+        filtered = PickerModel.rank(query, in: options)
         highlight = 0
     }
 }
