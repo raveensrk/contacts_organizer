@@ -1,0 +1,161 @@
+#+TITLE: contacts-organizer requirements
+#+STARTUP: content
+
+* TODO Wishlist pass for Diwali wishes
+:PROPERTIES:
+:CREATED:  [2026-11-08 Sun]
+:END:
+
+** Goal
+Decide once, for every iCloud contact, whether they get my Diwali wishes.
+Contacts I say yes to go in *Wishlist*; contacts I say no to go in
+*No Wishlist*. A later run asks only about contacts not yet decided.
+
+Sending the wishes is out of scope. This feature only builds the list.
+
+** Command
+- =contacts-organizer wishlist= walks the undecided contacts.
+- =contacts-organizer wishlist --review= walks contacts already in either
+  group, so an old choice can be changed.
+- =contacts-organizer wishlist --export= prints name and WhatsApp number of
+  every contact in Wishlist, as CSV.
+
+** Which contacts
+- All contacts in the iCloud account, filed or not.
+- A contact is undecided when it is in neither Wishlist nor No Wishlist.
+- Other accounts (Google, Exchange, On My Mac) stay ignored, as today.
+
+** Where decisions are kept
+- Both choices are iCloud groups named exactly =Wishlist= and =No Wishlist=.
+- Created on first use if missing.
+- Each choice is saved as it is made; quitting loses nothing.
+- No local state file: iCloud stays the only state.
+- Decisions are permanent. They are not reset each year.
+- Cards that carry a note are filed through Contacts.app, as triage does.
+
+** Picker
+- Same arrow-key picker as triage, with two fixed choices: Wishlist and
+  No Wishlist.
+- Typing filters the two choices; it never creates a new list.
+- Triage keys keep their meaning:
+  | Key    | Action                                        |
+  |--------+-----------------------------------------------|
+  | enter  | File into the highlighted group               |
+  | ctrl-s | Skip; asked again next run                    |
+  | ctrl-u | Undo the last choice and re-show that contact |
+  | ctrl-o | Open the contact in Contacts.app              |
+  | ctrl-q | Quit                                          |
+- The numbered line picker fallback works too, for pipes and dumb terminals.
+
+** Order
+- Contacts with a WhatsApp chat first, most recent chat first.
+- Then contacts with no chat or no phone number, alphabetical.
+- Recency comes from wacli's local store, =~/.wacli/wacli.db=, read-only.
+- If wacli or its store is missing, warn once and fall back to the triage
+  order (most recently modified first).
+
+** Card
+Each card shows, besides what triage shows today:
+- Last WhatsApp chat, e.g. =last chat 3 days ago=.
+- Lists the contact is already in, e.g. =in: Family, Work=.
+- WhatsApp name, when it differs from the card name.
+- Whether I messaged them around last Diwali: a message sent by me within
+  3 days of 20 Oct 2025.
+
+** Phone matching
+- Strip spaces, dashes, brackets and a leading =00=.
+- Numbers without a leading =+= are taken as India, =+91=.
+- Match against wacli's phone JIDs, and against =@lid= JIDs through wacli's
+  LID-to-phone map.
+- A contact with no match counts as "no chat".
+
+** Effect on existing commands
+- Triage: Wishlist and No Wishlist do not count as filing. A contact in
+  only those groups is still unfiled.
+- Triage picker: hides the two groups.
+- =audit=: ignores the two groups when looking for contacts in more than
+  one list.
+- =stats=: adds counts for Wishlist, No Wishlist and undecided.
+
+** Known risks
+- WhatsApp Web history is best effort: the store held 7208 messages on
+  2026-11-08. Last chat and last Diwali can be blank for people I did talk
+  to.
+- Many chats sit under =@lid= JIDs. Those the LID map cannot resolve fall to
+  the "no chat" part of the order.
+- The store opened only with =mode=ro&immutable=1=, which skips the =-wal=
+  file. Rows written by a running =wacli sync --follow= may be missed.
+
+** Tests
+- Phone normalisation and matching, including =+91= default and =@lid=.
+- Ordering: recency first, no-chat contacts after, fallback without wacli.
+- Undecided, review and export filters.
+- Triage and audit ignore the two groups.
+- Built against a throwaway sqlite store, never the live wacli or Contacts
+  data.
+
+* TODO Ignore groups in the wishlist walk
+:PROPERTIES:
+:CREATED:  [2026-11-08 Sun]
+:END:
+
+Depends on: [[*Wishlist pass for Diwali wishes][Wishlist pass for Diwali wishes]].
+
+** Goal
+I have many groups in Contacts. Some of them hold people I never send
+Diwali wishes to. The wishlist walk should not ask about contacts in those
+groups.
+
+** Rules
+- A contact in any ignored group is hidden from the walk, even when it is
+  also in a group that is not ignored.
+- Unfiled contacts (in no group) are still asked about.
+- Hiding writes nothing to iCloud. Un-ignoring a group brings its contacts
+  back as undecided.
+- Only the walk is affected. =wishlist --review= and =wishlist --export=
+  still show everyone already in Wishlist or No Wishlist.
+- Wishlist and No Wishlist cannot be ignored and are not offered in the
+  picker.
+
+** Storage
+- =~/.config/contacts-organizer/config.toml=, key =wishlist.ignore=.
+- Each entry holds the group identifier, with the group name as a comment,
+  so a group renamed in Contacts.app stays ignored:
+  #+begin_src toml
+  [wishlist]
+  ignore = [
+    "8F2C...:ABPerson",  # Work
+    "1A7D...:ABPerson",  # Clients
+  ]
+  #+end_src
+- A missing file means nothing is ignored.
+- An identifier with no matching group (the group was deleted) gives one
+  warning per run and stays in the file until the picker next saves.
+- No dependency is added: a small built-in parser reads only this key.
+- This is the first state kept outside iCloud. The README design note
+  "No state file" is updated to say so.
+
+** Command
+=contacts-organizer wishlist ignore= opens a checkbox picker of all groups.
+Each row shows the group name and its member count.
+
+| Key     | Action                          |
+|---------+---------------------------------|
+| up/down | Move the highlight              |
+| space   | Tick or untick the group        |
+| type    | Filter the groups               |
+| enter   | Save to the config file and exit |
+| esc     | Exit without saving             |
+
+** Feedback
+- The walk banner shows the hidden count, e.g.
+  =212 contacts hidden by 3 ignored lists=.
+- =stats= adds a line for undecided contacts hidden by the ignore list.
+
+** Tests
+- Config parsing: missing file, empty list, comments, unknown identifier.
+- Hiding: contact in an ignored group, in an ignored and a kept group,
+  unfiled.
+- Review and export unaffected by the ignore list.
+- Picker model: toggle, filter, save, cancel, as pure value logic.
+- Config written to a temporary directory, never the real one.
