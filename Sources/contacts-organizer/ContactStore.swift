@@ -206,7 +206,7 @@ final class ContactsRepo {
         do {
             let request = CNSaveRequest()
             request.addMember(contact, to: group)
-            try store.execute(request)
+            try Stderr.silenced { try store.execute(request) }
             return false
         } catch let error as NSError where ContactsFallback.isNoteFault(error) {
             try ContactsFallback.addMember(contactID: contact.identifier, groupID: group.identifier)
@@ -219,7 +219,7 @@ final class ContactsRepo {
         do {
             let request = CNSaveRequest()
             request.removeMember(contact, from: group)
-            try store.execute(request)
+            try Stderr.silenced { try store.execute(request) }
             return false
         } catch let error as NSError where ContactsFallback.isNoteFault(error) {
             try ContactsFallback.removeMember(contactID: contact.identifier, groupID: group.identifier)
@@ -250,11 +250,40 @@ final class ContactsRepo {
         do {
             let request = CNSaveRequest()
             request.delete(mutable)
-            try store.execute(request)
+            try Stderr.silenced { try store.execute(request) }
             return false
         } catch let error as NSError where ContactsFallback.isNoteFault(error) {
             try ContactsFallback.delete(contactID: contact.identifier)
             return true
         }
+    }
+}
+
+/// Runs `body` with file descriptor 2 pointed at /dev/null.
+///
+/// A save that touches a note-bearing card fails with Cocoa error 134092, and
+/// CoreData logs that failure to stderr itself before the error reaches us,
+/// as a `CoreData: error: Unhandled error occurred during faulting` block in
+/// the middle of the picker. The tool handles the error (Contacts.app makes
+/// the write instead), so the log is noise. Only the native attempt is
+/// silenced; the descriptor is restored even when `body` throws.
+enum Stderr {
+    static func silenced<T>(_ body: () throws -> T) rethrows -> T {
+        fflush(stderr)
+        let saved = dup(STDERR_FILENO)
+        let null = open("/dev/null", O_WRONLY)
+        guard saved >= 0, null >= 0 else {
+            if saved >= 0 { close(saved) }
+            if null >= 0 { close(null) }
+            return try body()
+        }
+        dup2(null, STDERR_FILENO)
+        close(null)
+        defer {
+            fflush(stderr)
+            dup2(saved, STDERR_FILENO)
+            close(saved)
+        }
+        return try body()
     }
 }

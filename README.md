@@ -3,7 +3,7 @@
 ![Swift](https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-macOS%2013%2B-000000?logo=apple&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-none-4c9a2a)
-![Tests](https://img.shields.io/badge/tests-92%20passing-4c9a2a)
+![Tests](https://img.shields.io/badge/tests-95%20passing-4c9a2a)
 
 Files unsorted iCloud contacts into lists, from the terminal.
 
@@ -126,7 +126,7 @@ numbered prompt: a number, or text to match, `enter` to skip, `:q` to quit,
 swift test
 ```
 
-92 tests, no fixtures and no terminal required. The parts that decide
+95 tests, no fixtures and no terminal required. The parts that decide
 behaviour are kept as pure value logic so they can be driven directly:
 
 - **`KeyDecoderTests`** — arrow keys in both normal and application cursor
@@ -159,6 +159,9 @@ behaviour are kept as pure value logic so they can be driven directly:
 - **`WishlistTests`** — undecided and ignored contacts (any ignored list
   hides), chat-recency order and its fallback, review order, the card lines,
   CSV export, the checkbox picker and its frame width.
+- **`StderrTests`** — the native save runs with stderr silenced, so CoreData's
+  own log of the note fault stays out of the picker, and stderr comes back
+  even when the save throws.
 
 Nothing here touches the live Contacts store, so the suite runs without the
 Contacts permission and cannot modify an address book. The one test that needs
